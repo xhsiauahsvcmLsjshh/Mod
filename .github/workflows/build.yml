@@ -1,0 +1,58 @@
+name: Build mod
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unzip project
+        run: |
+          ZIP=$(find . -name "*.zip" -not -path "./.git/*" | head -n 1)
+          echo "Using zip: $ZIP"
+          rm -rf _project
+          unzip -q "$ZIP" -d _project
+          SG=$(find _project -name settings.gradle | head -n 1)
+          PROJ=$(dirname "$SG")
+          echo "Project found in: $PROJ"
+          echo "PROJ=$PROJ" >> $GITHUB_ENV
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.8'
+
+      - name: Build mod
+        run: |
+          cd "$PROJ"
+          set -o pipefail
+          gradle build --stacktrace --no-daemon 2>&1 | tee build.log
+
+      - name: Mostra errori
+        if: failure()
+        run: |
+          cd "$PROJ"
+          grep -n -A3 "error:" build.log || true
+          grep -n -A10 "What went wrong" build.log || true
+
+      - name: Upload jar
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kingofcurses-jar
+          path: ${{ env.PROJ }}/build/libs/*.jar
+
+      - name: Upload log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: ${{ env.PROJ }}/build.log
